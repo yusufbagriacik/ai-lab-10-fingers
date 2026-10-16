@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Type Lab</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">⌨️ Type Lab</div>
+  <nav id="nav" hidden>
+    <button data-tab="test" class="active">Test</button>
+    <button data-tab="learn">Learn</button>
+    <button data-tab="board">Leaderboard</button>
+    <button data-tab="me">My Heatmap</button>
+    <button data-tab="teacher" id="teacherTab" hidden>Teacher Panel</button>
+  </nav>
+  <div id="userbox" hidden><span id="whoami"></span> <button id="logout" class="ghost">Log out</button></div>
+</header>
+
+<main>
+  <div id="modeBanner" class="banner" hidden></div>
+
+  <!-- GİRİŞ -->
+  <section id="view-auth" class="card narrow">
+    <h2 id="authTitle">Log in</h2>
+    <form id="authForm">
+      <label>Username<input id="username" autocomplete="username" required maxlength="20" autocapitalize="off" placeholder="yusuf"></label>
+      <label>PIN (4-6 digits)<input id="password" type="password" inputmode="numeric" autocomplete="current-password" required maxlength="6" placeholder="e.g. 4821"></label>
+      <p class="muted" style="margin:-4px 0 10px">Spaces and capital letters in the username are ignored, so "Yusuf " and "yusuf" are the same account.</p>
+      <div id="authError" class="error"></div>
+      <button class="primary" type="submit" id="authSubmit">Log in</button>
+    </form>
+    <p class="muted"><a href="#" id="authToggle">No account? Sign up</a></p>
+  </section>
+
+  <!-- TEST -->
+  <section id="view-test" hidden>
+    <div class="card">
+      <div class="stats">
+        <div><span id="liveTime">60</span><small>sec</small></div>
+        <div><span id="liveWpm">0</span><small>WPM</small></div>
+        <div><span id="liveAcc">100</span><small>% accuracy</small></div>
+        <select id="duration" title="Duration"><option value="30">30 sec</option><option value="60" selected>60 sec</option><option value="120">120 sec</option></select>
+      </div>
+      <div id="words" class="words"></div>
+      <div class="inputrow">
+        <span class="muted">Just start typing, the timer starts with your first key. Press Space after each word.</span>
+        <button id="restart" class="ghost">Restart</button>
+        <input id="typing" class="hidden-input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Typing input">
+      </div>
+    </div>
+    <div id="result" class="card" hidden>
+      <h2>Result</h2>
+      <div class="bigstats">
+        <div><b id="rWpm">0</b><small>WPM</small></div>
+        <div><b id="rAcc">0</b><small>% accuracy</small></div>
+        <div><b id="rOk">0</b><small>correct words</small></div>
+        <div><b id="rBad">0</b><small>wrong words</small></div>
+      </div>
+      <p id="rScore" class="muted"></p>
+      <p id="rRaw" class="muted"></p>
+      <p id="rBest" class="muted"></p>
+      <p id="rWorst" class="muted"></p>
+    </div>
+  </section>
+
+  <!-- LEARN -->
+  <section id="view-learn" hidden>
+    <div id="lessonList" class="card"></div>
+    <div id="lessonPane" class="card" hidden>
+      <div class="row"><h2 id="lsTitle"></h2><button id="lsBack" class="ghost">← All lessons</button></div>
+      <p id="lsTip" class="muted"></p>
+      <div class="stats"><div><span id="lsAcc">100</span><small>% accuracy</small></div><div><span id="lsWpm">0</span><small>WPM</small></div><div><span id="lsProg">0</span><small>% done</small></div></div>
+      <div id="lsText" class="lesson-text"></div>
+      <div id="lsHint" class="hint"></div>
+      <div id="lsKb"></div>
+      <div id="lsHands"></div>
+      <div id="lsResult" hidden></div>
+    </div>
+  </section>
+
+  <!-- LİDERLİK -->
+  <section id="view-board" class="card" hidden>
+    <div class="row"><h2>Leaderboard</h2>
+      <select id="boardRange"><option value="all">All time</option><option value="week">This week</option><option value="today">Today</option></select>
+    </div>
+    <p class="muted">Ranked by <b>score = WPM × accuracy</b> (best test in the selected period). Accuracy matters: 60 WPM at 90% scores 54.</p>
+    <table id="boardTable"></table>
+    <h2 style="margin-top:28px">Most practice</h2>
+    <p class="muted">Practice points reward time spent: 10 points per minute, ×1.2 at 90%+ accuracy, ×1.5 at 95%+, and +10 for every lesson passed. Tests and lessons both count.</p>
+    <table id="practiceTable"></table>
+    <h2 style="margin-top:28px">Recent attempts</h2>
+    <table id="recentTable"></table>
+  </section>
+
+  <!-- BENİM -->
+  <section id="view-me" hidden>
+    <div class="card"><h2>My most missed letters</h2>
+      <p class="muted">Red = high error rate on that letter. Number = total errors.</p>
+      <div id="myHeat"></div><div id="myWorst" class="muted"></div></div>
+    <div class="card"><h2>My progress (WPM)</h2><div id="myChart"></div></div>
+  </section>
+
+  <!-- HOCA -->
+  <section id="view-teacher" hidden>
+    <div class="card"><h2>Student Progress</h2>
+      <p class="muted">Sorted by practice points (time and effort). Click a row for details. "Progress" = average of first 5 tests → average of last 5 tests.</p>
+      <table id="teacherTable"></table></div>
+    <div id="studentDetail" class="card" hidden></div>
+    <div class="card"><h2>Class-wide error heatmap</h2><div id="classHeat"></div><div id="classWorst" class="muted"></div></div>
+  </section>
+</main>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="words.js"></script>
+<script src="db.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
