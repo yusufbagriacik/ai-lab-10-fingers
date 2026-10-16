@@ -364,8 +364,8 @@ async function renderTeacher() {
     return { u, l: t, all: l, lessons, xp, sec, n: t.length, best: w.length ? Math.max(...w) : 0, bestScore: t.length ? Math.max(...t.map(scoreOf)) : 0, first, last, trend: l.length >= 2 ? last - first : null,
       worst: topErrors(s.errs, s.tots, 3, 5).map(x => x.ch.toUpperCase()).join(" "), lastDate: l.length ? l[l.length - 1].date : 0 };
   }).sort((a, b) => b.xp - a.xp);
-  $("teacherTable").innerHTML = "<tr><th>Student</th><th>Points</th><th>Time</th><th>Lessons</th><th>Tests</th><th>Best WPM</th><th>Progress</th><th>Weak letters</th><th>Last active</th><th></th></tr>" +
-    (rows.map(r => `<tr class="click" data-id="${esc(r.u.id)}"><td>${esc(r.u.username)}</td><td><b>${r.xp}</b></td><td>${fmtTime(r.sec)}</td><td>${r.lessons}/${LESSONS.length}</td><td>${r.n}</td><td><b>${r.best}</b></td>
+  $("teacherTable").innerHTML = "<tr><th>Student</th><th>Points</th><th>Time</th><th>Lessons</th><th>Tests</th><th>Best score</th><th>Progress</th><th>Weak letters</th><th>Last active</th><th></th></tr>" +
+    (rows.map(r => `<tr class="click" data-id="${esc(r.u.id)}"><td>${esc(r.u.username)}</td><td><b>${r.xp}</b></td><td>${fmtTime(r.sec)}</td><td>${r.lessons}/${LESSONS.length}</td><td>${r.n}</td><td><b>${r.bestScore}</b> <span class="muted">(${r.best} WPM)</span></td>
       <td>${r.trend === null ? "-" : `${r.first} → ${r.last} <span class="${r.trend >= 0 ? "up" : "down"}">${r.trend >= 0 ? "▲" : "▼"}${Math.abs(r.trend)}</span>`}</td>
       <td>${r.worst || "-"}</td><td>${r.lastDate ? new Date(r.lastDate).toLocaleDateString("en-GB") : "-"}</td>
       <td style="white-space:nowrap"><button class="ghost del" data-act="scores" data-id="${esc(r.u.id)}">Clear scores</button> <button class="ghost del" data-act="user" data-id="${esc(r.u.id)}">Remove</button></td></tr>`).join("") || '<tr><td colspan="10" class="muted">No students yet.</td></tr>');
