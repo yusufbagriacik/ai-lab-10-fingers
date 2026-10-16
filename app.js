@@ -1,6 +1,26 @@
 const $ = id => document.getElementById(id);
-const ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
-let user = null, registering = false;
+// Keyboard layouts: heat = rows shown in heatmaps, rows = rows used by lessons, fingers = which finger types which key
+const LAYOUTS = {
+  us: { id: "us", lang: "en", heat: ["qwertyuiop", "asdfghjkl", "zxcvbnm"], rows: ["qwertyuiop", "asdfghjkl;", "zxcvbnm,."],
+    fingers: [["lp", "qaz"], ["lr", "wsx"], ["lm", "edc"], ["li", "rfvtgb"], ["ri", "yhnujm"], ["rm", "ik,"], ["rr", "ol."], ["rp", "p;"]] },
+  tr: { id: "tr", lang: "tr", heat: ["qwertyuıopğü", "asdfghjklşi", "zxcvbnmöç"], rows: ["qwertyuıopğü", "asdfghjklşi", "zxcvbnmöç."],
+    fingers: [["lp", "qaz"], ["lr", "wsx"], ["lm", "edc"], ["li", "rfvtgb"], ["ri", "yhnujm"], ["rm", "ıkö"], ["rr", "olç"], ["rp", "pğüşi."]] },
+};
+const KB = () => LAYOUTS[SETTINGS.kb] || LAYOUTS.us;
+const fingerOf = c => { for (const [f, cs] of KB().fingers) if (cs.includes(c)) return f; };
+const up = c => c.toLocaleUpperCase(SETTINGS.kb === "tr" ? "tr" : "en");
+const low = c => c.toLocaleLowerCase(SETTINGS.kb === "tr" ? "tr" : "en");
+const loc = () => LANG === "tr" ? "tr-TR" : "en-GB";
+const head = hs => "<tr>" + hs.map(h => `<th>${h ? T(h) : ""}</th>`).join("") + "</tr>";
+// words for the test: chosen word list, only words that can be typed on the chosen keyboard
+function getWords() {
+  const allowed = new Set(KB().rows.join("") + " ");
+  const typeable = l => [...new Set(l)].filter(w => [...w].every(c => allowed.has(c)));
+  let list = typeable(SETTINGS.words === "tr" ? window.WORDS_TR : window.WORDS);
+  if (list.length < 60) list = typeable(window.WORDS);
+  return list;
+}
+let user = null, registering = false, curTab = "test";
 
 /* ---------- Giriş ---------- */
 const ERR = {
@@ -8,29 +28,33 @@ const ERR = {
   "auth/user-not-found": "User not found.", "auth/invalid-credential": "Wrong username or password.",
   "auth/wrong-password": "Wrong password.", "auth/weak-password": "PIN must be 4-6 digits.",
 };
-$("authToggle").onclick = e => {
-  e.preventDefault(); registering = !registering;
-  $("authTitle").textContent = $("authSubmit").textContent = registering ? "Sign up" : "Log in";
-  $("authToggle").textContent = registering ? "I already have an account" : "No account? Sign up";
-  $("authError").textContent = "";
-};
+function renderAuthTexts() {
+  $("authTitle").textContent = $("authSubmit").textContent = T(registering ? "Sign up" : "Log in");
+  $("authToggle").textContent = T(registering ? "I already have an account" : "No account? Sign up");
+}
+function renderWho() { if (user) $("whoami").textContent = user.username + (user.role === "teacher" ? " (" + T("teacher") + ")" : ""); }
+function renderBanner() {
+  $("modeBanner").hidden = DB.mode !== "local";
+  $("modeBanner").textContent = T("Local mode: data stays in this browser only. Fill in firebase-config.js for shared use (see README). In local mode the username 'teacher' becomes the teacher.");
+}
+$("authToggle").onclick = e => { e.preventDefault(); registering = !registering; renderAuthTexts(); $("authError").textContent = ""; };
 $("password").addEventListener("input", e => { e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6); });
 $("authForm").onsubmit = async e => {
   e.preventDefault(); $("authError").textContent = "";
   try {
     const u = DB.cleanUsername($("username").value), p = $("password").value.trim();
     $("username").value = u;
-    if (!/^[a-z0-9_]{3,20}$/.test(u)) return void ($("authError").textContent = "Username: 3-20 letters, digits or _ (no spaces).");
-    if (!/^\d{4,6}$/.test(p)) return void ($("authError").textContent = "PIN must be 4 to 6 digits (numbers only).");
+    if (!/^[a-z0-9_]{3,20}$/.test(u)) return void ($("authError").textContent = T("Username: 3-20 letters, digits or _ (no spaces)."));
+    if (!/^\d{4,6}$/.test(p)) return void ($("authError").textContent = T("PIN must be 4 to 6 digits (numbers only)."));
     enter(registering ? await DB.register(u, p) : await DB.login(u, p));
-  } catch (err) { $("authError").textContent = ERR[err.code] || err.message || "Something went wrong."; }
+  } catch (err) { $("authError").textContent = ERR[err.code] ? T(ERR[err.code]) : (err.message || T("Something went wrong.")); }
 };
 $("logout").onclick = async () => { await DB.logout(); location.reload(); };
 
 function enter(u) {
   user = u;
   $("view-auth").hidden = true; $("nav").hidden = false; $("userbox").hidden = false;
-  $("whoami").textContent = u.username + (u.role === "teacher" ? " (teacher)" : "");
+  renderWho();
   $("teacherTab").hidden = u.role !== "teacher";
   show("test");
 }
@@ -38,6 +62,7 @@ function enter(u) {
 /* ---------- Sekmeler ---------- */
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.tab));
 function show(tab) {
+  curTab = tab;
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   ["test", "learn", "board", "me", "teacher"].forEach(t => $("view-" + t).hidden = t !== tab);
   if (tab === "test") resetTest();
@@ -56,7 +81,7 @@ function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { co
 function resetTest() {
   clearInterval(timer);
   dur = +$("duration").value; left = dur;
-  words = []; while (words.length < 350) words.push(...shuffle(WORDS));
+  words = []; while (words.length < 350) words.push(...shuffle(getWords()));
   wi = 0; started = finished = false;
   errs = {}; tots = {}; okWords = badWords = okChars = keys = wrongKeys = 0;
   el.words.innerHTML = words.map((w, i) => `<span class="w" id="w${i}">${[...w].map(c => `<span class="c">${c}</span>`).join("")}</span>`).join(" ");
@@ -138,11 +163,11 @@ async function finish() {
   $("liveWpm").textContent = wpm;
   $("rWpm").textContent = wpm; $("rAcc").textContent = acc; $("rOk").textContent = okWords; $("rBad").textContent = badWords;
   const worst = topErrors(errs, tots, 3);
-  $("rWorst").textContent = worst.length ? "Most missed letters: " + worst.map(x => x.ch.toUpperCase() + " (" + x.e + ")").join(", ") : "No letter errors, great job!";
+  $("rWorst").textContent = worst.length ? T("Most missed letters:") + " " + worst.map(x => up(x.ch) + " (" + x.e + ")").join(", ") : T("No letter errors, great job!");
   const raw = Math.round((keys + okWords + badWords) / 5 / (dur / 60));
-  $("rRaw").textContent = `Raw WPM (all keystrokes, errors included): ${raw} · Net WPM (correct letters): ${wpm} · Wrong words: ${badWords}`;
+  $("rRaw").textContent = T("Raw WPM (all keystrokes, errors included): {raw} · Net WPM (correct letters): {wpm} · Wrong words: {bad}", { raw, wpm, bad: badWords });
   const earned = xpOf({ dur, acc, lesson: 0 });
-  $("rScore").textContent = `Score: ${Math.round(wpm * acc / 100)} (WPM × accuracy) · +${earned} practice points`;
+  $("rScore").textContent = T("Score: {score} (WPM × accuracy) · +{pts} practice points", { score: Math.round(wpm * acc / 100), pts: earned });
   $("rBest").textContent = "";
   $("result").hidden = false;
   if (!keys) return;
@@ -151,8 +176,8 @@ async function finish() {
     await DB.saveResult(r);
     const mine = (await DB.results()).filter(x => x.uid === user.id && isTest(x)).map(x => x.wpm);
     const best = Math.max(...mine);
-    $("rBest").textContent = wpm >= best ? "🏆 New personal best!" : "Personal best: " + best + " WPM";
-  } catch (e) { $("rBest").textContent = "Could not save result: " + (e.message || e); }
+    $("rBest").textContent = wpm >= best ? T("🏆 New personal best!") : T("Personal best: {n} WPM", { n: best });
+  } catch (e) { $("rBest").textContent = T("Could not save result:") + " " + (e.message || e); }
 }
 
 /* ---------- Yardımcılar ---------- */
@@ -172,17 +197,17 @@ function heatmap(target, errs, tots) {
     const t = tots[c] || 0, e = errs[c] || 0;
     let style = "";
     if (t >= 5) { const k = Math.min((e / t) / max, 1); style = `background:hsl(${Math.round(130 * (1 - k))},65%,${38 + 4 * k}%)`; }
-    return `<div class="key" style="${style}" title="${c.toUpperCase()}: ${e} errors / ${t} presses">${c}<small>${e ? e : ""}</small></div>`;
+    return `<div class="key" style="${style}" title="${T("{c}: {e} errors / {t} presses", { c: up(c), e, t })}">${c}<small>${e ? e : ""}</small></div>`;
   };
-  target.innerHTML = `<div class="kb">${ROWS.map(r => `<div class="kr">${[...r].map(key).join("")}</div>`).join("")}</div>
-    <p class="muted" style="text-align:center">Green = few errors · Red = many errors · Gray = not enough data</p>`;
+  target.innerHTML = `<div class="kb" lang="${KB().lang}">${KB().heat.map(r => `<div class="kr">${[...r].map(key).join("")}</div>`).join("")}</div>
+    <p class="muted" style="text-align:center">${T("Green = few errors · Red = many errors · Gray = not enough data")}</p>`;
 }
 function workText(errs, tots) {
-  const w = topErrors(errs, tots, 5, 5).map(x => `${x.ch.toUpperCase()} (${Math.round(x.rate * 100)}% errors, ${x.e} times)`);
-  return w.length ? "Letters to practice: " + w.join(" · ") : "Not enough data yet.";
+  const w = topErrors(errs, tots, 5, 5).map(x => T("{c} ({pct}% errors, {n} times)", { c: up(x.ch), pct: Math.round(x.rate * 100), n: x.e }));
+  return w.length ? T("Letters to practice:") + " " + w.join(" · ") : T("Not enough data yet.");
 }
 function chart(points) {
-  if (points.length < 2) return '<p class="muted">At least 2 tests are needed for a chart.</p>';
+  if (points.length < 2) return `<p class="muted">${T("At least 2 tests are needed for a chart.")}</p>`;
   const W = 700, H = 180, P = 28, max = Math.max(...points, 10) * 1.1;
   const x = i => P + i * (W - 2 * P) / (points.length - 1), y = v => H - P - v / max * (H - 2 * P);
   const d = points.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ");
@@ -195,41 +220,41 @@ const isTest = r => !r.lesson;
 const scoreOf = r => Math.round(r.wpm * r.acc / 100);
 // Practice points: 10 points per minute practiced, x1.2 at 90%+ accuracy, x1.5 at 95%+, +10 for passing a lesson
 const xpOf = r => Math.round(Math.max(1, (r.dur || 0) / 6) * (r.acc >= 95 ? 1.5 : r.acc >= 90 ? 1.2 : 1)) + (r.lesson && r.passed ? 10 : 0);
-const fmtTime = sec => { const m = Math.round(sec / 60); return m >= 60 ? Math.floor(m / 60) + "h " + (m % 60) + "m" : m + "m"; };
+const fmtTime = sec => { const m = Math.round(sec / 60); return m >= 60 ? T("{h}h {m}m", { h: Math.floor(m / 60), m: m % 60 }) : T("{m}m", { m }); };
 const avg = a => a.length ? Math.round(a.reduce((s, x) => s + x, 0) / a.length) : 0;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 /* ---------- Learn: touch-typing lessons ---------- */
 const FINGERS = { lp: "left pinky", lr: "left ring finger", lm: "left middle finger", li: "left index finger", lt: "left thumb", rt: "right thumb", ri: "right index finger", rm: "right middle finger", rr: "right ring finger", rp: "right pinky" };
 const FCOL = { lp: "#ef9a9a", lr: "#ffcc80", lm: "#fff59d", li: "#a5d6a7", ri: "#80deea", rm: "#90caf9", rr: "#b39ddb", rp: "#f48fb1", lt: "#cfd8dc", rt: "#cfd8dc" };
-const FINGER_OF = {};
-[["lp", "qaz"], ["lr", "wsx"], ["lm", "edc"], ["li", "rfvtgb"], ["ri", "yhnujm"], ["rm", "ik,"], ["rr", "ol."], ["rp", "p;"]].forEach(([f, cs]) => [...cs].forEach(c => FINGER_OF[c] = f));
-const LROWS = ["qwertyuiop", "asdfghjkl;", "zxcvbnm,."];
 const GENERIC_TIP = "Reach with the highlighted finger, press the key, then bring the finger straight back to the home row. Look at the screen, not at your hands.";
+// keysTr / tipTr = what differs on the Turkish Q keyboard
 const LESSONS = [
   { title: "Home row: left hand", keys: "asdf", tip: "Rest your left fingers on A S D F (pinky on A, index on F). The small bump on F helps you find it without looking." },
-  { title: "Home row: right hand", keys: "jkl;", tip: "Rest your right fingers on J K L ; (index on J, pinky on ;). The small bump on J helps you find it." },
+  { title: "Home row: right hand", keys: "jkl;", keysTr: "jklş", tip: "Rest your right fingers on J K L ; (index on J, pinky on ;). The small bump on J helps you find it.", tipTr: "Rest your right fingers on J K L Ş (index on J, pinky on Ş). The small bump on J helps you find it." },
   { title: "Index fingers reach", keys: "gh", tip: "G is typed with the left index finger, H with the right index finger. Both reach one key to the side." },
-  { title: "Middle fingers up", keys: "ei", tip: GENERIC_TIP },
+  { title: "Middle fingers up", keys: "ei", keysTr: "eı", tip: GENERIC_TIP },
   { title: "Index fingers up", keys: "ru", tip: GENERIC_TIP },
   { title: "More index keys", keys: "ty", tip: "T and Y are also typed with the index fingers. Reach across, then return to F and J." },
   { title: "Ring fingers up", keys: "ow", tip: GENERIC_TIP },
-  { title: "Pinkies up", keys: "qp", tip: GENERIC_TIP },
+  { title: "Pinkies up", keys: "qp", keysTr: "qpiğü", tip: GENERIC_TIP },
   { title: "Bottom row: index fingers", keys: "vbnm", tip: "Curl your index fingers down to the bottom row, then return them to F and J." },
-  { title: "Bottom row: the rest", keys: "cxz,.", tip: GENERIC_TIP },
+  { title: "Bottom row: the rest", keys: "cxz,.", keysTr: "cxzöç.", tip: GENERIC_TIP },
   { title: "Real words", keys: "", tip: "Everything together. Keep your rhythm steady; accuracy first, speed will follow." },
 ];
+const lk = L => (SETTINGS.kb === "tr" && L.keysTr != null) ? L.keysTr : L.keys;
+const ltip = L => (SETTINGS.kb === "tr" && L.tipTr) ? L.tipTr : L.tip;
 let lsn = null;
 const passedSet = new Set();
 
-function lessonKnown(i) { return LESSONS.slice(0, i + 1).map(l => l.keys).join("") || "abcdefghijklmnopqrstuvwxyz"; }
+function lessonKnown(i) { return LESSONS.slice(0, i + 1).map(lk).join("") || KB().rows.join("").replace(/[^\p{L}]/gu, ""); }
 function makeDrill(i) {
-  const L = LESSONS[i], known = [...lessonKnown(i)], fresh = L.keys ? [...L.keys] : known;
+  const L = LESSONS[i], known = [...lessonKnown(i)], fresh = lk(L) ? [...lk(L)] : known, W = getWords();
   const pick = a => a[Math.random() * a.length | 0];
   let items = [];
-  if (i === LESSONS.length - 1) items = shuffle(WORDS).slice(0, 14);
+  if (i === LESSONS.length - 1) items = shuffle(W).slice(0, 14);
   else {
-    items = shuffle(WORDS.filter(w => [...w].every(c => known.includes(c)) && [...w].some(c => fresh.includes(c)))).slice(0, 5);
+    items = shuffle(W.filter(w => [...w].every(c => known.includes(c)) && [...w].some(c => fresh.includes(c)))).slice(0, 5);
     while (items.join(" ").length < 55) {
       const n = 2 + (Math.random() * 4 | 0); let w = "";
       for (let k = 0; k < n; k++) w += Math.random() < 0.6 ? pick(fresh) : pick(known);
@@ -245,8 +270,8 @@ async function renderLearn() {
   passedSet.clear();
   try { (await DB.results()).filter(r => r.uid === user.id && r.lesson && r.passed).forEach(r => passedSet.add(r.lesson)); } catch (e) {}
   const next = LESSONS.findIndex((_, i) => !passedSet.has(i + 1));
-  $("lessonList").innerHTML = `<h2>Touch-typing lessons</h2><p class="muted">Learn which finger presses which key. Finish a lesson with at least 90% accuracy to pass it. New to typing? Start at lesson 1.</p>
-    <div class="lessons">${LESSONS.map((l, i) => `<button class="lbtn ${passedSet.has(i + 1) ? "passed" : ""} ${i === next ? "next" : ""}" data-i="${i}"><b>${passedSet.has(i + 1) ? "✓ " : ""}${i + 1}. ${l.title}</b><small>${l.keys ? "Keys: " + [...l.keys].join(" ").toUpperCase() : "All letters"}</small></button>`).join("")}</div>`;
+  $("lessonList").innerHTML = `<h2>${T("Touch-typing lessons")}</h2><p class="muted">${T("Learn which finger presses which key. Finish a lesson with at least 90% accuracy to pass it. New to typing? Start at lesson 1.")}</p>
+    <div class="lessons">${LESSONS.map((l, i) => `<button class="lbtn ${passedSet.has(i + 1) ? "passed" : ""} ${i === next ? "next" : ""}" data-i="${i}"><b>${passedSet.has(i + 1) ? "✓ " : ""}${i + 1}. ${T(l.title)}</b><small>${lk(l) ? T("Keys:") + " " + [...lk(l)].map(up).join(" ") : T("All letters")}</small></button>`).join("")}</div>`;
   document.querySelectorAll(".lbtn").forEach(b => b.onclick = () => startLesson(+b.dataset.i));
 }
 function handsSVG(active) {
@@ -258,13 +283,14 @@ function handsSVG(active) {
   return `<svg class="hands" viewBox="0 0 440 180">${out}</svg>`;
 }
 function lessonKb() {
-  $("lsKb").innerHTML = `<div class="kb">${LROWS.map((r, i) => `<div class="kr" style="padding-left:${i * 14}px">${[...r].map(c => `<div class="key lk" data-k="${c}" style="background:${FCOL[FINGER_OF[c]]}">${c}</div>`).join("")}</div>`).join("")}
-    <div class="kr"><div class="key lk space" data-k=" " style="background:${FCOL.lt}">space</div></div></div>`;
+  const k = KB();
+  $("lsKb").innerHTML = `<div class="kb" lang="${k.lang}">${k.rows.map((r, i) => `<div class="kr" style="padding-left:${i * 14}px">${[...r].map(c => `<div class="key lk" data-k="${c}" style="background:${FCOL[fingerOf(c)]}">${c}</div>`).join("")}</div>`).join("")}
+    <div class="kr"><div class="key lk space" data-k=" " style="background:${FCOL.lt}">${T("space")}</div></div></div>`;
 }
 function startLesson(i) {
   lsn = { i, text: makeDrill(i), pos: 0, keys: 0, wrong: 0, errs: {}, tots: {}, start: 0, done: false };
   $("lessonList").hidden = true; $("lessonPane").hidden = false; $("lsResult").hidden = true;
-  $("lsTitle").textContent = `Lesson ${i + 1}: ${LESSONS[i].title}`; $("lsTip").textContent = LESSONS[i].tip;
+  $("lsTitle").textContent = T("Lesson {n}: {title}", { n: i + 1, title: T(LESSONS[i].title) }); $("lsTip").textContent = T(ltip(LESSONS[i]));
   $("lsText").innerHTML = [...lsn.text].map(c => c === " " ? '<span class="sp">␣</span>' : `<span>${c}</span>`).join("");
   lessonKb(); lessonUpdate();
 }
@@ -277,8 +303,8 @@ function lessonUpdate() {
   $("lsWpm").textContent = mins ? Math.round(lsn.pos / 5 / mins) : 0;
   document.querySelectorAll("#lsKb .key").forEach(e => e.classList.toggle("target", !!k && e.dataset.k === k));
   if (!k) { $("lsHint").textContent = ""; $("lsHands").innerHTML = ""; return; }
-  const f = k === " " ? null : FINGER_OF[k];
-  $("lsHint").innerHTML = k === " " ? "Press <b>SPACE</b> with either thumb" : `Press <b>${k.toUpperCase()}</b> with your <b>${FINGERS[f]}</b>`;
+  const f = k === " " ? null : fingerOf(k);
+  $("lsHint").innerHTML = k === " " ? T("Press <b>SPACE</b> with either thumb") : T("Press <b>{key}</b> with your <b>{finger}</b>", { key: up(k), finger: T(FINGERS[f] || "") });
   $("lsHands").innerHTML = handsSVG(k === " " ? ["lt", "rt"] : [f]);
 }
 document.addEventListener("keydown", e => {
@@ -286,7 +312,7 @@ document.addEventListener("keydown", e => {
   if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
   e.preventDefault();
   if (!lsn.start) lsn.start = Date.now();
-  const exp = lsn.text[lsn.pos], k = e.key.toLowerCase();
+  const exp = lsn.text[lsn.pos], k = low(e.key);
   lsn.keys++; lsn.tots[exp] = (lsn.tots[exp] || 0) + 1;
   const sp = $("lsText").children;
   if (k === exp) { sp[lsn.pos].className = (exp === " " ? "sp " : "") + "d"; lsn.pos++; }
@@ -305,13 +331,13 @@ async function finishLesson() {
   const acc = Math.round((lsn.keys - lsn.wrong) / lsn.keys * 100), wpm = Math.round(lsn.text.length / 5 / mins), passed = acc >= 90;
   const hasNext = lsn.i + 1 < LESSONS.length, cur = lsn.i;
   $("lsResult").hidden = false;
-  $("lsResult").innerHTML = `<div class="lres"><h2>${passed ? "🎉 Lesson passed!" : "Almost there"}</h2>
-    <p>${acc}% accuracy · ${wpm} WPM · ${secs}s · +${xpOf({ dur: secs, acc, lesson: 1, passed })} points ${passed ? "" : "<br>You need at least 90% accuracy to pass. Slow down a little and try again."}</p>
-    <button class="primary" id="lsRetry">Try again</button>${passed && hasNext ? '<button class="primary" id="lsNext">Next lesson →</button>' : ""}</div>`;
+  $("lsResult").innerHTML = `<div class="lres"><h2>${passed ? T("🎉 Lesson passed!") : T("Almost there")}</h2>
+    <p>${T("{acc}% accuracy · {wpm} WPM · {secs}s · +{pts} points", { acc, wpm, secs, pts: xpOf({ dur: secs, acc, lesson: 1, passed }) })} ${passed ? "" : "<br>" + T("You need at least 90% accuracy to pass. Slow down a little and try again.")}</p>
+    <button class="primary" id="lsRetry">${T("Try again")}</button>${passed && hasNext ? `<button class="primary" id="lsNext">${T("Next lesson →")}</button>` : ""}</div>`;
   $("lsRetry").onclick = () => startLesson(cur);
   if ($("lsNext")) $("lsNext").onclick = () => startLesson(cur + 1);
   try { await DB.saveResult({ uid: user.id, username: user.username, lesson: cur + 1, passed, wpm, acc, dur: secs, errs: lsn.errs, tots: lsn.tots, date: Date.now() }); }
-  catch (err) { $("lsResult").insertAdjacentHTML("beforeend", `<p class="muted">Could not save: ${esc(err.message || err)}</p>`); }
+  catch (err) { $("lsResult").insertAdjacentHTML("beforeend", `<p class="muted">${T("Could not save:")} ${esc(err.message || err)}</p>`); }
 }
 $("lsBack").onclick = renderLearn;
 
@@ -323,26 +349,26 @@ async function renderBoard() {
   const every = (await DB.results()).filter(r => r.date >= since).sort((a, b) => a.date - b.date);
   const all = every.filter(isTest), by = {};
   all.forEach(r => (by[r.username] ??= []).push(r));
-  const when = d => new Date(d).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  const when = d => new Date(d).toLocaleString(loc(), { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
   const rows = Object.entries(by).map(([u, l]) => {
     const top = l.reduce((a, b) => scoreOf(b) > scoreOf(a) ? b : a), last = l[l.length - 1];
     return { u, top, score: scoreOf(top), last, n: l.length };
   }).sort((a, b) => b.score - a.score || b.top.wpm - a.top.wpm);
   const medal = i => ["🥇", "🥈", "🥉"][i] || i + 1;
-  $("boardTable").innerHTML = "<tr><th>#</th><th>User</th><th>Best score</th><th>WPM</th><th>Accuracy</th><th>Latest WPM</th><th>Tests</th></tr>" +
+  $("boardTable").innerHTML = head(["#", "User", "Best score", "WPM", "Accuracy", "Latest WPM", "Tests"]) +
     (rows.map((r, i) => `<tr class="${r.u === user.username ? "me" : ""}"><td>${medal(i)}</td><td>${esc(r.u)}</td><td><b>${r.score}</b></td>
-      <td>${r.top.wpm}</td><td>${r.top.acc}%</td><td>${r.last.wpm} <span class="muted">${when(r.last.date)}</span></td><td>${r.n}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">No results yet.</td></tr>');
+      <td>${r.top.wpm}</td><td>${r.top.acc}%</td><td>${r.last.wpm} <span class="muted">${when(r.last.date)}</span></td><td>${r.n}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">${T("No results yet.")}</td></tr>`);
   // practice leaderboard: who works the most (tests + lessons)
   const pr = {};
   every.forEach(r => { const p = (pr[r.username] ??= { xp: 0, sec: 0, tests: 0, lessons: new Set(), days: new Set() });
     p.xp += xpOf(r); p.sec += r.dur || 0; p.days.add(new Date(r.date).toDateString());
     if (isTest(r)) p.tests++; else if (r.passed) p.lessons.add(r.lesson); });
   const prow = Object.entries(pr).sort((a, b) => b[1].xp - a[1].xp);
-  $("practiceTable").innerHTML = "<tr><th>#</th><th>User</th><th>Points</th><th>Time practiced</th><th>Tests</th><th>Lessons passed</th><th>Active days</th></tr>" +
-    (prow.map(([u, p], i) => `<tr class="${u === user.username ? "me" : ""}"><td>${medal(i)}</td><td>${esc(u)}</td><td><b>${p.xp}</b></td><td>${fmtTime(p.sec)}</td><td>${p.tests}</td><td>${p.lessons.size}/${LESSONS.length}</td><td>${p.days.size}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">No practice yet.</td></tr>');
+  $("practiceTable").innerHTML = head(["#", "User", "Points", "Time practiced", "Tests", "Lessons passed", "Active days"]) +
+    (prow.map(([u, p], i) => `<tr class="${u === user.username ? "me" : ""}"><td>${medal(i)}</td><td>${esc(u)}</td><td><b>${p.xp}</b></td><td>${fmtTime(p.sec)}</td><td>${p.tests}</td><td>${p.lessons.size}/${LESSONS.length}</td><td>${p.days.size}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">${T("No practice yet.")}</td></tr>`);
   const recent = all.slice(-20).reverse();
-  $("recentTable").innerHTML = "<tr><th>When</th><th>User</th><th>WPM</th><th>Accuracy</th><th>Score</th></tr>" +
-    (recent.map(r => `<tr class="${r.username === user.username ? "me" : ""}"><td>${when(r.date)}</td><td>${esc(r.username)}</td><td>${r.wpm}</td><td>${r.acc}%</td><td><b>${scoreOf(r)}</b></td></tr>`).join("") || '<tr><td colspan="5" class="muted">No results yet.</td></tr>');
+  $("recentTable").innerHTML = head(["When", "User", "WPM", "Accuracy", "Score"]) +
+    (recent.map(r => `<tr class="${r.username === user.username ? "me" : ""}"><td>${when(r.date)}</td><td>${esc(r.username)}</td><td>${r.wpm}</td><td>${r.acc}%</td><td><b>${scoreOf(r)}</b></td></tr>`).join("") || `<tr><td colspan="5" class="muted">${T("No results yet.")}</td></tr>`);
 }
 
 /* ---------- Benim ---------- */
@@ -362,24 +388,24 @@ async function renderTeacher() {
     const xp = l.reduce((a, r) => a + xpOf(r), 0), sec = l.reduce((a, r) => a + (r.dur || 0), 0);
     const first = avg(w.slice(0, 5)), last = avg(w.slice(-5));
     return { u, l: t, all: l, lessons, xp, sec, n: t.length, best: w.length ? Math.max(...w) : 0, bestScore: t.length ? Math.max(...t.map(scoreOf)) : 0, first, last, trend: l.length >= 2 ? last - first : null,
-      worst: topErrors(s.errs, s.tots, 3, 5).map(x => x.ch.toUpperCase()).join(" "), lastDate: l.length ? l[l.length - 1].date : 0 };
+      worst: topErrors(s.errs, s.tots, 3, 5).map(x => up(x.ch)).join(" "), lastDate: l.length ? l[l.length - 1].date : 0 };
   }).sort((a, b) => b.xp - a.xp);
-  $("teacherTable").innerHTML = "<tr><th>Student</th><th>Points</th><th>Time</th><th>Lessons</th><th>Tests</th><th>Best score</th><th>Progress</th><th>Weak letters</th><th>Last active</th><th></th></tr>" +
+  $("teacherTable").innerHTML = head(["Student", "Points", "Time", "Lessons", "Tests", "Best score", "Progress", "Weak letters", "Last active", ""]) +
     (rows.map(r => `<tr class="click" data-id="${esc(r.u.id)}"><td>${esc(r.u.username)}</td><td><b>${r.xp}</b></td><td>${fmtTime(r.sec)}</td><td>${r.lessons}/${LESSONS.length}</td><td>${r.n}</td><td><b>${r.bestScore}</b> <span class="muted">(${r.best} WPM)</span></td>
       <td>${r.trend === null ? "-" : `${r.first} → ${r.last} <span class="${r.trend >= 0 ? "up" : "down"}">${r.trend >= 0 ? "▲" : "▼"}${Math.abs(r.trend)}</span>`}</td>
-      <td>${r.worst || "-"}</td><td>${r.lastDate ? new Date(r.lastDate).toLocaleDateString("en-GB") : "-"}</td>
-      <td style="white-space:nowrap"><button class="ghost del" data-act="scores" data-id="${esc(r.u.id)}">Clear scores</button> <button class="ghost del" data-act="user" data-id="${esc(r.u.id)}">Remove</button></td></tr>`).join("") || '<tr><td colspan="10" class="muted">No students yet.</td></tr>');
+      <td>${r.worst || "-"}</td><td>${r.lastDate ? new Date(r.lastDate).toLocaleDateString(loc()) : "-"}</td>
+      <td style="white-space:nowrap"><button class="ghost del" data-act="scores" data-id="${esc(r.u.id)}">${T("Clear scores")}</button> <button class="ghost del" data-act="user" data-id="${esc(r.u.id)}">${T("Remove")}</button></td></tr>`).join("") || `<tr><td colspan="10" class="muted">${T("No students yet.")}</td></tr>`);
   document.querySelectorAll("#teacherTable .del").forEach(b => b.onclick = async e => {
     e.stopPropagation();
     const r = rows.find(x => x.u.id === b.dataset.id), whole = b.dataset.act === "user";
-    const msg = whole ? `Remove student "${r.u.username}" and ALL of their scores and lessons?\n\nThis cannot be undone.` : `Delete ALL scores and lesson progress of "${r.u.username}"?\n\nThis cannot be undone.`;
+    const msg = T(whole ? 'Remove student "{name}" and ALL of their scores and lessons?\n\nThis cannot be undone.' : 'Delete ALL scores and lesson progress of "{name}"?\n\nThis cannot be undone.', { name: r.u.username });
     if (!confirm(msg)) return;
     try { await (whole ? DB.deleteUser(r.u.id) : DB.deleteResults(r.u.id)); $("studentDetail").hidden = true; renderTeacher(); }
-    catch (err) { alert("Could not delete: " + (err.message || err) + "\n\nIf this says 'permissions', update the Firestore rules (see README)."); }
+    catch (err) { alert(T("Could not delete:") + " " + (err.message || err) + "\n\n" + T("If this says 'permissions', update the Firestore rules (see README).")); }
   });
   document.querySelectorAll("#teacherTable tr.click").forEach(tr => tr.onclick = () => {
     const r = rows.find(x => x.u.id === tr.dataset.id), s = sumRes(r.all), d = $("studentDetail");
-    d.hidden = false; d.innerHTML = `<h2>${esc(r.u.username)} – details</h2><div id="sdChart"></div><div id="sdHeat"></div><div class="muted">${workText(s.errs, s.tots)}</div>`;
+    d.hidden = false; d.innerHTML = `<h2>${T("{name} – details", { name: esc(r.u.username) })}</h2><div id="sdChart"></div><div id="sdHeat"></div><div class="muted">${workText(s.errs, s.tots)}</div>`;
     $("sdChart").innerHTML = chart(r.l.map(x => x.wpm)); heatmap($("sdHeat"), s.errs, s.tots);
     d.scrollIntoView({ behavior: "smooth" });
   });
@@ -387,8 +413,14 @@ async function renderTeacher() {
   heatmap($("classHeat"), cs.errs, cs.tots); $("classWorst").textContent = workText(cs.errs, cs.tots);
 }
 
-/* ---------- Başlat ---------- */
+/* ---------- Ayarlar / Başlat ---------- */
+// language, words or keyboard changed: redraw texts and the current page (theme needs no redraw)
+window.onSettingsChange = key => {
+  if (key === "theme") return;
+  renderAuthTexts(); renderBanner();
+  if (user) { renderWho(); show(curTab); }
+};
 (async () => {
-  if (DB.mode === "local") { $("modeBanner").hidden = false; $("modeBanner").textContent = "Local mode: data stays in this browser only. Fill in firebase-config.js for shared use (see README). In local mode the username 'teacher' becomes the teacher."; }
+  renderAuthTexts(); renderBanner();
   const u = await DB.current(); if (u) enter(u);
 })();

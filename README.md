@@ -5,6 +5,9 @@
 - Her kullanıcı için hata ısı haritası (klavye üzerinde, hangi harfte çok hata yapıyor)
 - Hoca paneli: tüm öğrenciler, gelişim (ilk 5 test → son 5 test), zayıf harfler, öğrenci detayı, sınıf ısı haritası
 
+## Ayarlar (⚙️)
+Sağ üstteki ⚙️ simgesinden: arayüz dili (English / Türkçe), tema (otomatik / aydınlık / karanlık), yazılacak kelimeler (İngilizce / Türkçe) ve klavye düzeni (ABD QWERTY / Türkçe Q). Ayarlar tarayıcıda saklanır. Klavye düzeni ders ekranındaki parmak haritasını ve ısı haritasını değiştirir; Türkçe harfleri (ç ğ ı ö ş ü) yazmak için Türkçe Q klavye gerekir.
+
 ## Hemen dene (yerel mod)
 `index.html` dosyasını tarayıcıda aç. Veriler sadece o tarayıcıda durur. Kullanıcı adı `teacher` olarak kayıt olursan hoca paneli açılır.
 

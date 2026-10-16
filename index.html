@@ -17,6 +17,21 @@
     <button data-tab="teacher" id="teacherTab" hidden>Teacher Panel</button>
   </nav>
   <div id="userbox" hidden><span id="whoami"></span> <button id="logout" class="ghost">Log out</button></div>
+  <button id="settingsBtn" class="ghost gear" title="Settings" aria-label="Settings">⚙️</button>
+  <div id="settingsPanel" class="panel" hidden>
+    <h3>Settings</h3>
+    <div class="setlabel">Language</div>
+    <div class="seg" data-key="lang"><button data-val="en">English</button><button data-val="tr">Türkçe</button></div>
+    <div class="setlabel">Theme</div>
+    <div class="seg" data-key="theme"><button data-val="auto">Auto</button><button data-val="light">Light</button><button data-val="dark">Dark</button></div>
+    <div class="setlabel">Typing words</div>
+    <div class="seg" data-key="words"><button data-val="en">English</button><button data-val="tr">Türkçe</button></div>
+    <div class="setlabel">Keyboard</div>
+    <div class="seg" data-key="kb"><button data-val="us">US QWERTY</button><button data-val="tr">Turkish Q</button></div>
+    <p class="muted small">Turkish words need a Turkish Q keyboard to type ç ğ ı ö ş ü.</p>
+    <p class="muted small">Changing language, words or keyboard restarts the current test.</p>
+    <p class="muted small">Settings are saved in this browser.</p>
+  </div>
 </header>
 
 <main>
@@ -83,10 +98,10 @@
 
   <!-- LİDERLİK -->
   <section id="view-board" class="card" hidden>
-    <div class="row"><h2>Leaderboard</h2>
+    <div class="row"><h2>Rankings</h2>
       <select id="boardRange"><option value="all">All time</option><option value="week">This week</option><option value="today">Today</option></select>
     </div>
-    <p class="muted">Ranked by <b>score = WPM × accuracy</b> (best test in the selected period). Accuracy matters: 60 WPM at 90% scores 54.</p>
+    <p class="muted" data-i18n="rankNote"></p>
     <table id="boardTable"></table>
     <h2 style="margin-top:28px">Most practice</h2>
     <p class="muted">Practice points reward time spent: 10 points per minute, ×1.2 at 90%+ accuracy, ×1.5 at 95%+, and +10 for every lesson passed. Tests and lessons both count.</p>
@@ -118,6 +133,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
 <script src="words.js"></script>
+<script src="words-tr.js"></script>
+<script src="i18n.js"></script>
 <script src="db.js"></script>
 <script src="app.js"></script>
 </body>
