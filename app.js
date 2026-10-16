@@ -364,10 +364,19 @@ async function renderTeacher() {
     return { u, l: t, all: l, lessons, xp, sec, n: t.length, best: w.length ? Math.max(...w) : 0, bestScore: t.length ? Math.max(...t.map(scoreOf)) : 0, first, last, trend: l.length >= 2 ? last - first : null,
       worst: topErrors(s.errs, s.tots, 3, 5).map(x => x.ch.toUpperCase()).join(" "), lastDate: l.length ? l[l.length - 1].date : 0 };
   }).sort((a, b) => b.xp - a.xp);
-  $("teacherTable").innerHTML = "<tr><th>Student</th><th>Points</th><th>Time</th><th>Lessons</th><th>Tests</th><th>Best score</th><th>Progress</th><th>Weak letters</th><th>Last active</th></tr>" +
+  $("teacherTable").innerHTML = "<tr><th>Student</th><th>Points</th><th>Time</th><th>Lessons</th><th>Tests</th><th>Best score</th><th>Progress</th><th>Weak letters</th><th>Last active</th><th></th></tr>" +
     (rows.map(r => `<tr class="click" data-id="${esc(r.u.id)}"><td>${esc(r.u.username)}</td><td><b>${r.xp}</b></td><td>${fmtTime(r.sec)}</td><td>${r.lessons}/${LESSONS.length}</td><td>${r.n}</td><td><b>${r.bestScore}</b> <span class="muted">(${r.best} WPM)</span></td>
       <td>${r.trend === null ? "-" : `${r.first} → ${r.last} <span class="${r.trend >= 0 ? "up" : "down"}">${r.trend >= 0 ? "▲" : "▼"}${Math.abs(r.trend)}</span>`}</td>
-      <td>${r.worst || "-"}</td><td>${r.lastDate ? new Date(r.lastDate).toLocaleDateString("en-GB") : "-"}</td></tr>`).join("") || '<tr><td colspan="9" class="muted">No students yet.</td></tr>');
+      <td>${r.worst || "-"}</td><td>${r.lastDate ? new Date(r.lastDate).toLocaleDateString("en-GB") : "-"}</td>
+      <td style="white-space:nowrap"><button class="ghost del" data-act="scores" data-id="${esc(r.u.id)}">Clear scores</button> <button class="ghost del" data-act="user" data-id="${esc(r.u.id)}">Remove</button></td></tr>`).join("") || '<tr><td colspan="10" class="muted">No students yet.</td></tr>');
+  document.querySelectorAll("#teacherTable .del").forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const r = rows.find(x => x.u.id === b.dataset.id), whole = b.dataset.act === "user";
+    const msg = whole ? `Remove student "${r.u.username}" and ALL of their scores and lessons?\n\nThis cannot be undone.` : `Delete ALL scores and lesson progress of "${r.u.username}"?\n\nThis cannot be undone.`;
+    if (!confirm(msg)) return;
+    try { await (whole ? DB.deleteUser(r.u.id) : DB.deleteResults(r.u.id)); $("studentDetail").hidden = true; renderTeacher(); }
+    catch (err) { alert("Could not delete: " + (err.message || err) + "\n\nIf this says 'permissions', update the Firestore rules (see README)."); }
+  });
   document.querySelectorAll("#teacherTable tr.click").forEach(tr => tr.onclick = () => {
     const r = rows.find(x => x.u.id === tr.dataset.id), s = sumRes(r.all), d = $("studentDetail");
     d.hidden = false; d.innerHTML = `<h2>${esc(r.u.username)} – details</h2><div id="sdChart"></div><div id="sdHeat"></div><div class="muted">${workText(s.errs, s.tots)}</div>`;

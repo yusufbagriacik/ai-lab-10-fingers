@@ -42,12 +42,23 @@
       },
       async login(username, password) {
         const c = await auth.signInWithEmailAndPassword(emailOf(clean(username)), fbPw(password));
+        const ref = fs.collection("users").doc(c.user.uid);
+        // a student removed by the teacher is simply re-created as a fresh student on next login
+        if (!(await ref.get()).exists) await ref.set({ username: clean(username), role: "student", created: Date.now() });
         return loadUser(c.user);
       },
       logout: () => auth.signOut(),
       saveResult: r => fs.collection("results").add(r),
       async results() { const s = await fs.collection("results").orderBy("date").limit(10000).get(); return s.docs.map(d => d.data()); },
       async users() { const s = await fs.collection("users").get(); return s.docs.map(d => ({ id: d.id, ...d.data() })); },
+      // teacher only (enforced by the Firestore rules)
+      async deleteResults(uid) {
+        const s = await fs.collection("results").where("uid", "==", uid).get();
+        for (let i = 0; i < s.docs.length; i += 400) {
+          const b = fs.batch(); s.docs.slice(i, i + 400).forEach(d => b.delete(d.ref)); await b.commit();
+        }
+      },
+      async deleteUser(uid) { await this.deleteResults(uid); await fs.collection("users").doc(uid).delete(); },
     };
   } else {
     DB = {
@@ -73,6 +84,8 @@
       async logout() { localStorage.removeItem("yl_session"); },
       async saveResult(r) { const a = ls.get("yl_results", []); a.push(r); ls.set("yl_results", a); },
       async results() { return ls.get("yl_results", []); },
+      async deleteResults(uid) { ls.set("yl_results", ls.get("yl_results", []).filter(r => r.uid !== uid)); },
+      async deleteUser(uid) { await this.deleteResults(uid); const u = ls.get("yl_users", {}); delete u[uid]; ls.set("yl_users", u); },
       async users() { return Object.values(ls.get("yl_users", {})).map(u => ({ id: u.username, username: u.username, role: u.role })); },
     };
   }

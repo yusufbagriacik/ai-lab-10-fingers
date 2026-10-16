@@ -17,13 +17,19 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{db}/documents {
+    function isTeacher() {
+      return request.auth != null &&
+        get(/databases/$(db)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
     match /users/{uid} {
       allow read: if request.auth != null;
       allow create: if request.auth.uid == uid && request.resource.data.role == 'student';
+      allow delete: if isTeacher();
     }
     match /results/{id} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow delete: if isTeacher();
     }
   }
 }
