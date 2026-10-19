@@ -31,6 +31,8 @@
       const x = d.exists ? d.data() : { username: fu.email.split("@")[0], role: "student" };
       return { id: fu.uid, username: x.username, role: x.role || "student" };
     };
+    // shared results are cached for 30 s so switching tabs doesn't re-read the whole collection (free-plan read quota)
+    let cache = {};
     DB = {
       mode: "firebase",
       current: () => new Promise(res => { const un = auth.onAuthStateChanged(async u => { un(); res(await loadUser(u)); }); }),
@@ -48,11 +50,21 @@
         return loadUser(c.user);
       },
       logout: () => auth.signOut(),
-      saveResult: r => fs.collection("results").add(r),
-      async results() { const s = await fs.collection("results").orderBy("date").limit(10000).get(); return s.docs.map(d => d.data()); },
+      async saveResult(r) { cache = {}; await fs.collection("results").add(r); },
+      async results(since = 0) {
+        const c = cache[since];
+        if (c && Date.now() - c.t < 30000) return c.d;
+        let q = fs.collection("results"); if (since) q = q.where("date", ">=", since);
+        const s = await q.orderBy("date").limit(5000).get(), d = s.docs.map(x => x.data());
+        cache[since] = { t: Date.now(), d };
+        return d;
+      },
+      // only this user's own results: far fewer reads than the whole collection
+      async myResults(uid) { const s = await fs.collection("results").where("uid", "==", uid).get(); return s.docs.map(d => d.data()).sort((a, b) => a.date - b.date); },
       async users() { const s = await fs.collection("users").get(); return s.docs.map(d => ({ id: d.id, ...d.data() })); },
       // teacher only (enforced by the Firestore rules)
       async deleteResults(uid) {
+        cache = {};
         const s = await fs.collection("results").where("uid", "==", uid).get();
         for (let i = 0; i < s.docs.length; i += 400) {
           const b = fs.batch(); s.docs.slice(i, i + 400).forEach(d => b.delete(d.ref)); await b.commit();
@@ -84,6 +96,7 @@
       async logout() { localStorage.removeItem("yl_session"); },
       async saveResult(r) { const a = ls.get("yl_results", []); a.push(r); ls.set("yl_results", a); },
       async results() { return ls.get("yl_results", []); },
+      async myResults(uid) { return ls.get("yl_results", []).filter(r => r.uid === uid); },
       async deleteResults(uid) { ls.set("yl_results", ls.get("yl_results", []).filter(r => r.uid !== uid)); },
       async deleteUser(uid) { await this.deleteResults(uid); const u = ls.get("yl_users", {}); delete u[uid]; ls.set("yl_users", u); },
       async users() { return Object.values(ls.get("yl_users", {})).map(u => ({ id: u.username, username: u.username, role: u.role })); },

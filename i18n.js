@@ -36,6 +36,10 @@ const I18N = { tr: {
   "{c}: {e} errors / {t} presses": "{c}: {e} hata / {t} basış",
   "Green = few errors · Red = many errors · Gray = not enough data": "Yeşil = az hata · Kırmızı = çok hata · Gri = yeterli veri yok",
   "{c} ({pct}% errors, {n} times)": "{c} (%{pct} hata, {n} kez)", "Letters to practice:": "Çalışılması gereken harfler:", "Not enough data yet.": "Henüz yeterli veri yok.",
+  "Speed per second": "Saniye saniye hız",
+  "speed each second": "her saniyenin hızı",
+  "running average (your WPM)": "ortalama (WPM'in)",
+  "typo": "hata", "typos": "hata", "average": "ortalama",
   "At least 2 tests are needed for a chart.": "Grafik için en az 2 test gerekli.",
   "{h}h {m}m": "{h}sa {m}dk", "{m}m": "{m}dk",
   /* learn */
@@ -75,6 +79,9 @@ const I18N = { tr: {
   "My most missed letters": "En çok hata yaptığım harfler", "Red = high error rate on that letter. Number = total errors.": "Kırmızı = o harfte hata oranı yüksek. Sayı = toplam hata sayısı.",
   "My progress (WPM)": "Gelişimim (WPM)",
   /* teacher */
+  "⬇ Export CSV": "⬇ CSV indir",
+  "{n} student(s) haven't practiced in 7+ days: {names}": "{n} öğrenci 7+ gündür çalışmadı: {names}",
+  "No practice for 7+ days": "7+ gündür çalışma yok",
   "Student Progress": "Öğrenci İlerlemesi",
   'Sorted by practice points (time and effort). Click a row for details. "Progress" = average of first 5 tests → average of last 5 tests.': 'Çalışma puanına göre sıralı (zaman ve emek). Ayrıntı için bir satıra tıkla. "Gelişim" = ilk 5 testin ortalaması → son 5 testin ortalaması.',
   "Class-wide error heatmap": "Sınıf geneli hata ısı haritası",

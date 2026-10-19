@@ -67,14 +67,16 @@ function show(tab) {
   ["test", "learn", "board", "me", "teacher"].forEach(t => $("view-" + t).hidden = t !== tab);
   if (tab === "test") resetTest();
   if (tab === "learn") renderLearn();
-  if (tab === "board") renderBoard();
-  if (tab === "me") renderMe();
-  if (tab === "teacher") renderTeacher();
+  const async_ = { board: renderBoard, me: renderMe, teacher: renderTeacher }[tab];
+  if (async_) {
+    const v = $("view-" + tab); v.classList.remove("enter"); v.style.opacity = 0;
+    Promise.resolve(async_()).catch(() => {}).finally(() => { if (curTab === tab) { v.style.opacity = ""; void v.offsetWidth; v.classList.add("enter"); } });
+  }
 }
 
 /* ---------- Yazma testi ---------- */
 let words, wi, started, startT, timer, left, dur;
-let errs, tots, okWords, badWords, okChars, keys, wrongKeys, finished;
+let errs, tots, okWords, badWords, okChars, keys, wrongKeys, finished, samples, lastSec, prevChars, prevWrong;
 const el = { words: $("words"), inp: $("typing") };
 
 function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
@@ -84,10 +86,11 @@ function resetTest() {
   words = []; while (words.length < 350) words.push(...shuffle(getWords()));
   wi = 0; started = finished = false;
   errs = {}; tots = {}; okWords = badWords = okChars = keys = wrongKeys = 0;
+  samples = []; lastSec = prevChars = prevWrong = 0;
   el.words.innerHTML = words.map((w, i) => `<span class="w" id="w${i}">${[...w].map(c => `<span class="c">${c}</span>`).join("")}</span>`).join(" ");
   el.words.scrollTop = 0; $("w0").classList.add("cur");
   el.inp.value = ""; el.inp.disabled = false; el.inp.focus();
-  $("result").hidden = true; live();
+  $("result").hidden = true; $("rChart").innerHTML = ""; live();
 }
 $("restart").onclick = resetTest;
 // the input is invisible: clicking the words, or just typing anywhere on the test page, focuses it
@@ -109,7 +112,7 @@ function partialChars() {
   return n;
 }
 function live() {
-  $("liveTime").textContent = left;
+  $("liveTime").textContent = left; $("liveTime").classList.toggle("low", started && left <= 5 && left > 0);
   const mins = started ? Math.max((Date.now() - startT) / 60000, 1 / 600) : 1;
   $("liveWpm").textContent = started ? Math.round((okChars + partialChars()) / 5 / mins) : 0;
   $("liveAcc").textContent = keys ? Math.round((keys - wrongKeys) / keys * 100) : 100;
@@ -151,17 +154,38 @@ el.inp.addEventListener("keydown", e => {
   wi++; el.inp.value = ""; $("w" + wi).classList.add("cur");
   el.words.scrollTop = $("w" + wi).offsetTop - 4; // current line becomes the top line
 });
+// once per second: how many correct characters were typed in that second (instant speed) and the running average
+function sampleSecond() {
+  const elapsed = Math.min(dur, Math.floor((Date.now() - startT) / 1000));
+  while (lastSec < elapsed) {
+    lastSec++;
+    const cc = okChars + partialChars();
+    samples.push({ s: lastSec, inst: Math.max(0, cc - prevChars) * 12, avg: cc / 5 / (lastSec / 60), err: wrongKeys - prevWrong });
+    prevChars = cc; prevWrong = wrongKeys;
+  }
+}
 function tick() {
+  sampleSecond();
   left = Math.max(0, dur - Math.floor((Date.now() - startT) / 1000));
   live(); if (left <= 0) finish();
 }
+function countUp(node, to) {
+  if (!to || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) { node.textContent = to; return; }
+  const t0 = performance.now(), ms = 700;
+  (function step(now) {
+    const p = Math.min(1, (now - t0) / ms);
+    node.textContent = Math.round(to * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(step);
+  })(t0);
+}
 async function finish() {
   const extra = partialChars();
+  sampleSecond();
   finished = true; clearInterval(timer); el.inp.disabled = true;
   const wpm = Math.round((okChars + extra) / 5 / (dur / 60));
   const acc = keys ? Math.round((keys - wrongKeys) / keys * 100) : 0;
   $("liveWpm").textContent = wpm;
-  $("rWpm").textContent = wpm; $("rAcc").textContent = acc; $("rOk").textContent = okWords; $("rBad").textContent = badWords;
+  countUp($("rWpm"), wpm); countUp($("rAcc"), acc); countUp($("rOk"), okWords); countUp($("rBad"), badWords);
   const worst = topErrors(errs, tots, 3);
   $("rWorst").textContent = worst.length ? T("Most missed letters:") + " " + worst.map(x => up(x.ch) + " (" + x.e + ")").join(", ") : T("No letter errors, great job!");
   const raw = Math.round((keys + okWords + badWords) / 5 / (dur / 60));
@@ -169,12 +193,13 @@ async function finish() {
   const earned = xpOf({ dur, acc, lesson: 0 });
   $("rScore").textContent = T("Score: {score} (WPM × accuracy) · +{pts} practice points", { score: Math.round(wpm * acc / 100), pts: earned });
   $("rBest").textContent = "";
+  $("rChart").innerHTML = speedChart(samples);
   $("result").hidden = false;
   if (!keys) return;
   const r = { uid: user.id, username: user.username, wpm, acc, ok: okWords, bad: badWords, dur, errs, tots, date: Date.now() };
   try {
     await DB.saveResult(r);
-    const mine = (await DB.results()).filter(x => x.uid === user.id && isTest(x)).map(x => x.wpm);
+    const mine = (await DB.myResults(user.id)).filter(isTest).map(x => x.wpm);
     const best = Math.max(...mine);
     $("rBest").textContent = wpm >= best ? T("🏆 New personal best!") : T("Personal best: {n} WPM", { n: best });
   } catch (e) { $("rBest").textContent = T("Could not save result:") + " " + (e.message || e); }
@@ -214,6 +239,22 @@ function chart(points) {
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><path d="${d}" fill="none" stroke="#f5b942" stroke-width="2.5"/>
     ${points.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="3.5" fill="#f5b942"><title>${v} WPM</title></circle>`).join("")}
     <text x="4" y="${y(max / 1.1)}" fill="#8b95a3" font-size="11">${Math.round(max / 1.1)}</text><text x="4" y="${H - P}" fill="#8b95a3" font-size="11">0</text></svg>`;
+}
+// per-second speed: gray = instant speed (3 s smoothed), amber = running average, red dots = seconds with typos
+function speedChart(s) {
+  if (s.length < 3) return "";
+  const sm = s.map((p, i) => { const w = s.slice(Math.max(0, i - 2), i + 1); return w.reduce((t, x) => t + x.inst, 0) / w.length; });
+  const W = 700, H = 200, L = 34, R = 10, Tp = 12, B = 26, max = Math.max(...sm, ...s.map(p => p.avg), 20) * 1.1;
+  const x = i => L + i * (W - L - R) / (s.length - 1), y = v => H - B - v / max * (H - B - Tp);
+  const line = (vals, col, w) => `<path d="${vals.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ")}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round" pathLength="1" class="draw"/>`;
+  const step = Math.max(1, Math.round(s.length / 6));
+  const grid = [0, .5, 1].map(f => { const v = max / 1.1 * f; return `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="#8b95a3" stroke-opacity=".2"/><text x="2" y="${y(v) + 4}" fill="#8b95a3" font-size="11">${Math.round(v)}</text>`; }).join("");
+  const xs = s.map((p, i) => (i + 1) % step === 0 || i === 0 ? `<text x="${x(i)}" y="${H - 8}" fill="#8b95a3" font-size="11" text-anchor="middle">${p.s}s</text>` : "").join("");
+  const errs = s.map((p, i) => p.err ? `<circle cx="${x(i)}" cy="${y(sm[i])}" r="4.5" fill="#ef5b5b"><title>${p.s}s: ${p.err} ${T("typos")}</title></circle>` : "").join("");
+  const dots = s.map((p, i) => `<circle cx="${x(i)}" cy="${y(sm[i])}" r="9" fill="transparent"><title>${p.s}s: ${Math.round(sm[i])} WPM (${T("average")} ${Math.round(p.avg)})</title></circle>`).join("");
+  return `<h3 style="margin:18px 0 4px;font-size:15px">${T("Speed per second")}</h3>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%">${grid}${xs}${line(sm, "#8b95a3", 2.5)}${line(s.map(p => p.avg), "#f5b942", 3)}${errs}${dots}</svg>
+    <p class="muted small"><span style="color:#8b95a3">━</span> ${T("speed each second")} &nbsp; <span style="color:#f5b942">━</span> ${T("running average (your WPM)")} &nbsp; <span style="color:#ef5b5b">●</span> ${T("typo")}</p>`;
 }
 const isTest = r => !r.lesson;
 // Skill score: speed weighted by accuracy (60 WPM at 100% = 60, 60 WPM at 90% = 54)
@@ -268,7 +309,7 @@ function makeDrill(i) {
 async function renderLearn() {
   $("lessonPane").hidden = true; $("lessonList").hidden = false; lsn = null;
   passedSet.clear();
-  try { (await DB.results()).filter(r => r.uid === user.id && r.lesson && r.passed).forEach(r => passedSet.add(r.lesson)); } catch (e) {}
+  try { (await DB.myResults(user.id)).filter(r => r.lesson && r.passed).forEach(r => passedSet.add(r.lesson)); } catch (e) {}
   const next = LESSONS.findIndex((_, i) => !passedSet.has(i + 1));
   $("lessonList").innerHTML = `<h2>${T("Touch-typing lessons")}</h2><p class="muted">${T("Learn which finger presses which key. Finish a lesson with at least 90% accuracy to pass it. New to typing? Start at lesson 1.")}</p>
     <div class="lessons">${LESSONS.map((l, i) => `<button class="lbtn ${passedSet.has(i + 1) ? "passed" : ""} ${i === next ? "next" : ""}" data-i="${i}"><b>${passedSet.has(i + 1) ? "✓ " : ""}${i + 1}. ${T(l.title)}</b><small>${lk(l) ? T("Keys:") + " " + [...lk(l)].map(up).join(" ") : T("All letters")}</small></button>`).join("")}</div>`;
@@ -346,7 +387,7 @@ $("boardRange").onchange = renderBoard;
 async function renderBoard() {
   const range = $("boardRange").value, now = Date.now();
   const since = range === "today" ? new Date().setHours(0, 0, 0, 0) : range === "week" ? now - 7 * 864e5 : 0;
-  const every = (await DB.results()).filter(r => r.date >= since).sort((a, b) => a.date - b.date);
+  const every = (await DB.results(since)).filter(r => r.date >= since).sort((a, b) => a.date - b.date);
   const all = every.filter(isTest), by = {};
   all.forEach(r => (by[r.username] ??= []).push(r));
   const when = d => new Date(d).toLocaleString(loc(), { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -373,12 +414,22 @@ async function renderBoard() {
 
 /* ---------- Benim ---------- */
 async function renderMe() {
-  const mine = (await DB.results()).filter(r => r.uid === user.id), s = sumRes(mine);
+  const mine = await DB.myResults(user.id), s = sumRes(mine);
   heatmap($("myHeat"), s.errs, s.tots); $("myWorst").textContent = workText(s.errs, s.tots);
   $("myChart").innerHTML = chart(mine.filter(isTest).map(r => r.wpm));
 }
 
 /* ---------- Hoca ---------- */
+let tSort = { key: "xp", dir: -1 }, teacherRows = [];
+// download the class table as a spreadsheet file (";" separator and BOM so Turkish Excel opens it correctly)
+$("exportCsv").onclick = () => {
+  const q = v => '"' + String(v).replace(/"/g, '""') + '"', day = t => t ? new Date(t).toISOString().slice(0, 10) : "";
+  const lines = [["Student", "Points", "Minutes practiced", "Lessons passed", "Tests", "Best score", "Best WPM", "Avg first 5 tests", "Avg last 5 tests", "Last active"].map(q).join(";")]
+    .concat(teacherRows.map(r => [r.u.username, r.xp, Math.round(r.sec / 60), r.lessons, r.n, r.bestScore, r.best, r.first, r.last, day(r.lastDate)].map(q).join(";")));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
+  a.download = "type-lab-" + day(Date.now()) + ".csv"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
 async function renderTeacher() {
   const [users, results] = await Promise.all([DB.users(), DB.results()]);
   const students = users.filter(u => u.role !== "teacher");
@@ -389,12 +440,26 @@ async function renderTeacher() {
     const first = avg(w.slice(0, 5)), last = avg(w.slice(-5));
     return { u, l: t, all: l, lessons, xp, sec, n: t.length, best: w.length ? Math.max(...w) : 0, bestScore: t.length ? Math.max(...t.map(scoreOf)) : 0, first, last, trend: l.length >= 2 ? last - first : null,
       worst: topErrors(s.errs, s.tots, 3, 5).map(x => up(x.ch)).join(" "), lastDate: l.length ? l[l.length - 1].date : 0 };
-  }).sort((a, b) => b.xp - a.xp);
-  $("teacherTable").innerHTML = head(["Student", "Points", "Time", "Lessons", "Tests", "Best score", "Progress", "Weak letters", "Last active", ""]) +
+  });
+  const DAY = 864e5, idle = r => Date.now() - r.lastDate > 7 * DAY;
+  const SORTS = { name: r => r.u.username, xp: r => r.xp, sec: r => r.sec, lessons: r => r.lessons, n: r => r.n, bestScore: r => r.bestScore, trend: r => r.trend ?? -1e9, lastDate: r => r.lastDate };
+  const sortFn = SORTS[tSort.key] || SORTS.xp;
+  rows.sort((a, b) => { const x = sortFn(a), y = sortFn(b); return (x < y ? -1 : x > y ? 1 : 0) * tSort.dir || b.xp - a.xp; });
+  const sh = (key, label) => `<th class="sortable" data-sort="${key || ""}">${label ? T(label) : ""}${key && tSort.key === key ? (tSort.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
+  const sleepy = rows.filter(idle);
+  $("inactiveNote").hidden = !sleepy.length;
+  $("inactiveNote").innerHTML = sleepy.length ? "⚠️ " + T("{n} student(s) haven't practiced in 7+ days: {names}", { n: sleepy.length, names: sleepy.map(r => esc(r.u.username)).join(", ") }) : "";
+  $("teacherTable").innerHTML = "<tr>" + [["name", "Student"], ["xp", "Points"], ["sec", "Time"], ["lessons", "Lessons"], ["n", "Tests"], ["bestScore", "Best score"], ["trend", "Progress"], ["", "Weak letters"], ["lastDate", "Last active"], ["", ""]].map(([k, l]) => sh(k, l)).join("") + "</tr>" +
     (rows.map(r => `<tr class="click" data-id="${esc(r.u.id)}"><td>${esc(r.u.username)}</td><td><b>${r.xp}</b></td><td>${fmtTime(r.sec)}</td><td>${r.lessons}/${LESSONS.length}</td><td>${r.n}</td><td><b>${r.bestScore}</b> <span class="muted">(${r.best} WPM)</span></td>
       <td>${r.trend === null ? "-" : `${r.first} → ${r.last} <span class="${r.trend >= 0 ? "up" : "down"}">${r.trend >= 0 ? "▲" : "▼"}${Math.abs(r.trend)}</span>`}</td>
-      <td>${r.worst || "-"}</td><td>${r.lastDate ? new Date(r.lastDate).toLocaleDateString(loc()) : "-"}</td>
+      <td>${r.worst || "-"}</td><td>${r.lastDate ? new Date(r.lastDate).toLocaleDateString(loc()) : "-"}${idle(r) ? ` <span class="down" title="${T("No practice for 7+ days")}">⚠️</span>` : ""}</td>
       <td style="white-space:nowrap"><button class="ghost del" data-act="scores" data-id="${esc(r.u.id)}">${T("Clear scores")}</button> <button class="ghost del" data-act="user" data-id="${esc(r.u.id)}">${T("Remove")}</button></td></tr>`).join("") || `<tr><td colspan="10" class="muted">${T("No students yet.")}</td></tr>`);
+  document.querySelectorAll("#teacherTable th.sortable").forEach(th => th.onclick = () => {
+    if (!th.dataset.sort) return;
+    tSort = { key: th.dataset.sort, dir: tSort.key === th.dataset.sort ? -tSort.dir : (th.dataset.sort === "name" ? 1 : -1) };
+    renderTeacher();
+  });
+  teacherRows = rows;
   document.querySelectorAll("#teacherTable .del").forEach(b => b.onclick = async e => {
     e.stopPropagation();
     const r = rows.find(x => x.u.id === b.dataset.id), whole = b.dataset.act === "user";
