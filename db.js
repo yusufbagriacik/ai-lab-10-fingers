@@ -5,7 +5,7 @@
   const emailOf = u => u.toLowerCase() + "@yazilab.local";
   // one canonical form per username: no spaces, lowercase, Turkish letters -> ASCII
   const TR = { "ç": "c", "ğ": "g", "ı": "i", "i̇": "i", "ö": "o", "ş": "s", "ü": "u" };
-  const clean = u => u.toLowerCase().replace(/\s+/g, "").replace(/[çğıöşü]/g, c => TR[c]);
+  const clean = u => u.toLowerCase().replace(/\u0307/g, "").replace(/\s+/g, "").replace(/[çğıöşü]/g, c => TR[c]);
   // Firebase requires passwords of 6+ characters, so a 4-6 digit PIN is padded before it is sent
   const fbPw = p => "pin-" + p + "-typelab";
 
