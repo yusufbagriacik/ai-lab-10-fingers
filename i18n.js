@@ -16,7 +16,6 @@ const I18N = { tr: {
   /* header, login */
   "Test": "Test", "Learn": "Öğren", "Leaderboard": "Liderlik", "My Heatmap": "Isı Haritam", "Teacher Panel": "Hoca Paneli", "Log out": "Çıkış",
   "Log in": "Giriş yap", "Sign up": "Kayıt ol", "Username": "Kullanıcı adı", "PIN (4-6 digits)": "PIN (4-6 hane)", "e.g. 4821": "örn. 4821",
-  'Spaces and capital letters in the username are ignored, so "Yusuf " and "yusuf" are the same account.': 'Kullanıcı adındaki boşluklar ve büyük harfler dikkate alınmaz; "Yusuf " ile "yusuf" aynı hesaptır.',
   "No account? Sign up": "Hesabın yok mu? Kayıt ol", "I already have an account": "Zaten hesabım var",
   "teacher": "hoca", "Something went wrong.": "Bir hata oluştu.",
   "Username already taken.": "Bu kullanıcı adı alınmış.", "User not found.": "Kullanıcı bulunamadı.",
